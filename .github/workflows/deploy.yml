@@ -1,0 +1,76 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy on EC2 with rollback
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          script: |
+            set -euo pipefail
+
+            APP_DIR="$HOME/devops-assessment"
+            cd "$APP_DIR"
+
+            NEW_TAG="${{ github.event.workflow_run.head_sha }}"
+            PREV_TAG=$(grep -E '^API_TAG=' .env 2>/dev/null | cut -d= -f2 || true)
+
+            echo "Previous tag: ${PREV_TAG:-none}"
+            echo "New tag: $NEW_TAG"
+
+            # Pull latest code from main
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Build new image tagged with SHA
+            docker build -t devops-assessment-api:${NEW_TAG} .
+
+            # Update API_TAG in .env
+            if grep -q '^API_TAG=' .env; then
+              sed -i "s/^API_TAG=.*/API_TAG=${NEW_TAG}/" .env
+            else
+              echo "API_TAG=${NEW_TAG}" >> .env
+            fi
+
+            # Deploy ONLY api
+            docker compose up -d --no-deps api
+
+            # Health check (must return 200)
+            for i in {1..20}; do
+              if curl -fsS ${{ secrets.HEALTHCHECK_URL }} >/dev/null; then
+                echo "Health check passed"
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "Health check FAILED -> rollback"
+
+            if [ -n "${PREV_TAG:-}" ]; then
+              sed -i "s/^API_TAG=.*/API_TAG=${PREV_TAG}/" .env
+              docker compose up -d --no-deps api
+
+              for i in {1..20}; do
+                if curl -fsS ${{ secrets.HEALTHCHECK_URL }} >/dev/null; then
+                  echo "Rollback succeeded"
+                  exit 1
+                fi
+                sleep 2
+              done
+            fi
+
+            echo "Rollback failed too"
+            exit 1
