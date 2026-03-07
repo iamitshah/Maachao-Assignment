@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 pg_hba.conf 
+nginx/letsencrypt/
+nginx/certbot/
+nginx/certs/
