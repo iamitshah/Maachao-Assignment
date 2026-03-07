@@ -8,4 +8,4 @@ def health():
 
 @app.get("/api/hello")
 def hello():
-    return {"message": "hello from ci/cd"}
+    return {"message": "hello from ci/cd V2"}
