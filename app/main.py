@@ -25,4 +25,4 @@ def health():
 
 @app.get("/api/hello")
 def hello():
-    return {"message": "hello"}
+    return {"message": "hello from CICD:v1"}
