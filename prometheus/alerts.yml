@@ -1,0 +1,11 @@
+groups:
+  - name: host-alerts
+    rules:
+      - alert: DiskSpaceHigh
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 75
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space usage high (>75%) on {{ $labels.instance }}"
+          description: "Disk usage is above 75% for more than 2 minutes."
